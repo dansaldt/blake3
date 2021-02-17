@@ -2,14 +2,41 @@
 #include <stdint.h>
 
 
-typedef struct struct_nc_blake3_state
+enum nc_blake3_domain_flag
+{
+    NC_BLAKE3_CHUNK_START           = (1 << 0), 
+    NC_BLAKE3_CHUNK_END             = (1 << 1), 
+    NC_BLAKE3_PARENT                = (1 << 2), 
+    NC_BLAKE3_ROOT                  = (1 << 3), 
+    NC_BLAKE3_KEYED_HASH            = (1 << 4), 
+    NC_BLAKE3_DERIVE_KEY_CONTEXT    = (1 << 5), 
+    NC_BLAKE3_DERIVE_KEY_MATERIAL   = (1 << 6)
+};
+
+typedef struct nc_blake3_state
 {
     uint8_t  h[8];
     uint32_t t[2];
     uint32_t b;
     uint32_t d;
 }
-nc_blake3_state;
+nc_blake3_state_t;
+
+typedef struct nc_blake3_param
+{
+    uint8_t  digest_length;
+    uint8_t  key_length;
+    uint8_t  fanout;
+    uint8_t  depth;
+    uint32_t leaf_length;
+    uint8_t  node_offset[6];
+    uint8_t  node_depth;
+    uint8_t  inner_length;
+    uint8_t  salt[8];
+    uint8_t  personal[8]; 
+}
+nc_blake3_param_t;
+
 
 
 /* phase API */
