@@ -1,5 +1,16 @@
 
 #include <stdint.h>
+#include <stdlib.h>
+
+
+enum nc_blake3_constant
+{
+    NC_BLAKE3_BLOCK_BYTES    = 64,
+    NC_BLAKE3_DIGEST_BYTES   = 32, 
+    NC_BLAKE3_KEY_BYTES      = 32, 
+    NC_BLAKE3_SALT_BYTES     = 8, 
+    NC_BLAKE3_PERSONAL_BYTES = 8
+};
 
 
 enum nc_blake3_domain_flag
@@ -40,7 +51,8 @@ nc_blake3_param_t;
 
 
 /* phase API */
-int nc_blake3_init();
+int nc_blake3_init (nc_blake3_state_t *s, size_t digestlen);
+int nc_blake3_init_param (nc_blake3_state_t *s, nc_blake3_param_t *p);
 int nc_blake3_update();
 int nc_blake3_final();
 
