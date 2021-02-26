@@ -2,6 +2,31 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+/* visibility */
+#ifdef BUILD_BLAKE3
+    #if defined(_MSC_VER) || defined(__MINGW32__) || defined(__CYGWIN__)
+        #ifdef BUILD_BLAKE3_DLL
+            #define NC_BLAKE3_API __declspec(dllexport)
+        #else
+            #define NC_BLAKE3_API
+        #endif
+    #elif defined(HAVE_VISIBILITY) && HAVE_VISIBILITY
+        #define NC_BLAKE3_API __attribute__ ((visibility("default")))
+    #else
+        #define NC_BLAKE3_API
+    #endif
+#else /* not BUILD_BLAKE3 */
+    #if defined(_MSC_VER) || defined(__MINGW32__) || defined(__CYGWIN__)
+        #ifdef BUILD_BLAKE3_DLL
+            #define NC_BLAKE3_API __declspec(dllimport)
+        #else
+            #define NC_BLAKE3_API
+        #endif
+    #else
+        #define NC_BLAKE3_API
+    #endif
+#endif /* end BUILD_BLAKE3 */
+
 
 enum nc_blake3_constant
 {
@@ -48,12 +73,12 @@ struct nc_blake3_state
 
 
 /* phase API */
-int nc_blake3_init (struct nc_blake3_state *s, size_t digestlen);
-int nc_blake3_update(struct nc_blake3_state *s, const void *in, const size_t len);
-int nc_blake3_final();
+NC_BLAKE3_API int nc_blake3_init (struct nc_blake3_state *s, size_t digestlen);
+NC_BLAKE3_API int nc_blake3_update(struct nc_blake3_state *s, const void *in, const size_t len);
+NC_BLAKE3_API int nc_blake3_final();
 
 /* simple API */
-int nc_blake3();
+NC_BLAKE3_API int nc_blake3();
 
 
 /* test functions */
