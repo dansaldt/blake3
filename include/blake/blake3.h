@@ -49,7 +49,7 @@ struct nc_blake3_state
 
 /* phase API */
 int nc_blake3_init (struct nc_blake3_state *s, size_t digestlen);
-int nc_blake3_update(struct nc_blake3_state *s, const char *in, const size_t len);
+int nc_blake3_update(struct nc_blake3_state *s, const void *in, const size_t len);
 int nc_blake3_final();
 
 /* simple API */

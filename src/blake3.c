@@ -5,6 +5,10 @@
 #include <string.h>
 
 
+#define xmemcpy(dest, src, len) memcpy(dest, src, len)
+#define xmemset(dest, c, len)   memset(dest, c, len)
+
+
 static const uint32_t blake3_iv[] = 
 {
     0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 
@@ -28,18 +32,24 @@ static inline uint32_t get_uint32 (const void *src)
     return *((uint32_t *)src);
 }
 
-static inline void blake3_init_chunks (struct nc_blake3_state *s)
+static inline void blake3_chunk_init (
+            struct nc_blake3_chunk *c, const uint32_t key[8], const uint8_t flags)
 {
-    // TODO
+    xmemcpy(c->h, key, NC_BLAKE3_KEY_BYTES);
+    c->chunk_counter = 0;
+    xmemset(c->buf, 0, NC_BLAKE3_BLOCK_BYTES);
+    c->buflen = 0;
+    c->blocks_compressed = 0;
+    c->flags = flags;
 }
 
 static inline void blake3_init_base (
             struct nc_blake3_state *s, const uint32_t key[8], const uint8_t flags)
 {
-    memset(s, 0, sizeof(struct nc_blake3_state));
+    xmemset(s, 0, sizeof(struct nc_blake3_state));
 
-    memcpy(s->key, key, NC_BLAKE3_KEY_BYTES);
-    blake3_init_chunks(s);
+    xmemcpy(s->key, key, NC_BLAKE3_KEY_BYTES);
+    blake3_chunk_init(&s->chunk, s->key, flags);
     
     s->cv_stacklen=0;
 }
@@ -74,9 +84,14 @@ int nc_blake3_init (struct nc_blake3_state *s, size_t digestlen)
     return 0; 
 }
 
-int nc_blake3_update(struct nc_blake3_state *s, const char *in, const size_t len)
+int nc_blake3_update(struct nc_blake3_state *s, const void *in, const size_t len)
 {
-    // TODO
+    const uint8_t *in_bytes = in;
+
+    while (len > NC_BLAKE3_CHUNK_BYTES) {
+
+        
+    }
 
     return 0;
 }
