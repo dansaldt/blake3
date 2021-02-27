@@ -53,11 +53,11 @@ enum nc_blake3_domain_flag
 };
 #undef BIT
 
-struct nc_blake3_chunk 
+struct nc_blake3_chunk_state 
 {
-    uint32_t h[8];
-    uint32_t chunk_counter;
-    uint8_t  buf[NC_BLAKE3_BLOCK_BYTES];
+    uint32_t cv[8];
+    uint64_t counter;
+    uint8_t  buf[NC_BLAKE3_CHUNK_BYTES]; // TODO check if buf length need to be in chunk or block 
     uint32_t buflen;
     uint8_t  blocks_compressed;
     uint8_t  flags;
@@ -66,7 +66,8 @@ struct nc_blake3_chunk
 struct nc_blake3_state
 {
     uint32_t key[8];
-    struct nc_blake3_chunk chunk;
+    uint32_t digestlen; // TODO check if really needed
+    struct nc_blake3_chunk_state chunk;
     uint8_t  cv_stacklen;
     uint8_t  cv_stack[NC_BLAKE3_MAX_DEPTH * NC_BLAKE3_DIGEST_BYTES];
 };
@@ -75,7 +76,7 @@ struct nc_blake3_state
 /* phase API */
 NC_BLAKE3_API int nc_blake3_init (struct nc_blake3_state *s, size_t digestlen);
 NC_BLAKE3_API int nc_blake3_update(struct nc_blake3_state *s, const void *in, const size_t len);
-NC_BLAKE3_API int nc_blake3_final();
+NC_BLAKE3_API int nc_blake3_final(struct nc_blake3_state *s);
 
 /* simple API */
 NC_BLAKE3_API int nc_blake3();
