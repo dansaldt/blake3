@@ -32,6 +32,11 @@ static inline uint32_t load32 (const void *src)
     return *((uint32_t *)src);
 }
 
+static inline void store32 (void *dest, const uint32_t val)
+{
+    *((uint32_t *)dest) = val;
+}
+
 static inline uint32_t rotr32( const uint32_t w, const unsigned c )
 {
     return ( w >> c ) | ( w << ( 32 - c ) );
@@ -47,9 +52,9 @@ static inline uint32_t counter_high (uint64_t counter)
     return ((uint32_t)(counter >> 32));
 }
 
-static inline void compress(
+static inline void compress_xof(
             uint32_t cv[8], const uint8_t *block, const size_t blocklen, 
-            const uint64_t block_counter, const uint8_t flags)
+            const uint64_t block_counter, const uint8_t flags, uint8_t out[64])
 {
     uint32_t m[16];
     uint32_t v[16];
@@ -109,8 +114,25 @@ static inline void compress(
 #undef ROUND
 #undef Gi
 
-    for (i = 0; i < 8; ++i) 
-        cv[i] = cv[i] ^ v[i] ^ v[i + 8];
+//    for (i = 0; i < 8; ++i)
+//        cv[i] = cv[i] ^ v[i] ^ v[i + 8];
+
+    store32(&out[0 * 4], v[0] ^ v[8]);
+    store32(&out[1 * 4], v[1] ^ v[9]);
+    store32(&out[2 * 4], v[2] ^ v[10]);
+    store32(&out[3 * 4], v[3] ^ v[11]);
+    store32(&out[4 * 4], v[4] ^ v[12]);
+    store32(&out[5 * 4], v[5] ^ v[13]);
+    store32(&out[6 * 4], v[6] ^ v[14]);
+    store32(&out[7 * 4], v[7] ^ v[15]);
+    store32(&out[8 * 4], v[8] ^ cv[0]);
+    store32(&out[9 * 4], v[9] ^ cv[1]);
+    store32(&out[10 * 4], v[10] ^ cv[2]);
+    store32(&out[11 * 4], v[11] ^ cv[3]);
+    store32(&out[12 * 4], v[12] ^ cv[4]);
+    store32(&out[13 * 4], v[13] ^ cv[5]);
+    store32(&out[14 * 4], v[14] ^ cv[6]);
+    store32(&out[15 * 4], v[15] ^ cv[7]);
 }
 
 static inline void chunk_init (
@@ -129,22 +151,27 @@ static inline void chunk_update (
 {
     xmemcpy(cs->buf, in, len);
     cs->buflen   = len;
-    cs->counter += 1;
 }
 
-static inline void chunk_output (struct nc_blake3_chunk_state *cs, uint32_t out[8])
+static inline void chunk_root_output (struct nc_blake3_state *s, uint32_t out[8])
 {
-    const uint8_t *pbuf = cs->buf;
-    size_t i, nblocks = NC_BLAKE3_CHUNK_BYTES / NC_BLAKE3_BLOCK_BYTES; 
+    uint8_t buf64[64];
+    struct nc_blake3_chunk_state *cs = &s->chunk;
+    size_t nblock = 0, blocks= 0, compress_len = 0;
 
-    for (i=0; i < nblocks; ++i) {
-        compress((uint32_t *)&cs->cv, (pbuf + 0 * NC_BLAKE3_BLOCK_BYTES), 
-            cs->buflen, cs->counter, cs->flags);
+    // get number of blocks to be compressed
+    do {
+        compress_len += NC_BLAKE3_BLOCK_BYTES;
+        blocks += 1;
+    } while (compress_len < cs->buflen);
+
+    // compress blocks time
+    while (nblock < blocks) {
+        compress_xof(cs->cv, cs->buf, cs->buflen, nblock, cs->flags | NC_BLAKE3_ROOT, buf64);
+        nblock += 1;
     }
     
-    for (i = 0; i < 8; ++i) 
-        out[i] = cs->cv[i];
-    
+    xmemcpy(out, buf64, s->digestlen);
 }
 
 static inline void init_state (
@@ -202,9 +229,9 @@ NC_BLAKE3_API int nc_blake3_final(struct nc_blake3_state *s)
 
     size_t left = s->chunk.buflen;
     //if ( left > 0 ) {  // TODO commented just for the test
-        s->chunk.flags |= NC_BLAKE3_CHUNK_END | NC_BLAKE3_ROOT;
+        s->chunk.flags |= NC_BLAKE3_CHUNK_END;
         //xmemset((s->chunk.buf + left), 0, (NC_BLAKE3_CHUNK_BYTES - left));
-        chunk_output(&s->chunk, (void *)&s->cv_stack);
+    chunk_root_output(s, (void *)&s->cv_stack);
     //}
 
     return 0;
