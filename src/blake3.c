@@ -52,19 +52,18 @@ static inline uint32_t counter_high (uint64_t counter)
     return ((uint32_t)(counter >> 32));
 }
 
-static inline void compress_xof(
-            uint32_t cv[8], const uint8_t *block, const size_t blocklen, 
-            const uint64_t block_counter, const uint8_t flags, uint8_t out[64])
+static inline void compress_core(
+        uint32_t v[16], uint32_t cv[8], const uint8_t *block, const size_t blocklen,
+        const uint64_t block_counter, const uint8_t flags, uint8_t out[64])
 {
     uint32_t m[16];
-    uint32_t v[16];
 
     size_t i;
 
     for (i = 0; i < 16; ++i)
         m[i] = load32( block + i * sizeof(m[i]) );
 
-    for (i = 0; i < 8; ++i) 
+    for (i = 0; i < 8; ++i)
         v[i] = cv[i];
 
     v[ 8] = iv[0];
@@ -78,7 +77,7 @@ static inline void compress_xof(
     v[14] = (uint32_t)blocklen;
 
     v[15] = flags;
-    
+
 #define Gi(r, i, a, b, c, d)                            \
     do {                                                \
         a = a + b + m[schedule[r][2*i+0]];              \
@@ -114,8 +113,15 @@ static inline void compress_xof(
 #undef ROUND
 #undef Gi
 
-//    for (i = 0; i < 8; ++i)
-//        cv[i] = cv[i] ^ v[i] ^ v[i + 8];
+}
+
+static inline void compress_xof(
+            uint32_t cv[8], const uint8_t *block, const size_t blocklen, 
+            const uint64_t block_counter, const uint8_t flags, uint8_t out[64])
+{
+    uint32_t v[16];
+
+    compress_core(v, cv, block, blocklen, block_counter, flags, out);
 
     store32(&out[0 * 4], v[0] ^ v[8]);
     store32(&out[1 * 4], v[1] ^ v[9]);
