@@ -54,7 +54,7 @@ static inline uint32_t counter_high (uint64_t counter)
 
 static inline void compress_core(
         uint32_t v[16], uint32_t cv[8], const uint8_t *block, const size_t blocklen,
-        const uint64_t block_counter, const uint8_t flags, uint8_t out[64])
+        const uint64_t block_counter, const uint8_t flags)
 {
     uint32_t m[16];
 
@@ -121,7 +121,7 @@ static inline void compress_xof(
 {
     uint32_t v[16];
 
-    compress_core(v, cv, block, blocklen, block_counter, flags, out);
+    compress_core(v, cv, block, blocklen, block_counter, flags);
 
     store32(&out[0 * 4], v[0] ^ v[8]);
     store32(&out[1 * 4], v[1] ^ v[9]);
