@@ -52,7 +52,7 @@ static inline uint32_t counter_high (uint64_t counter)
     return ((uint32_t)(counter >> 32));
 }
 
-static inline void compress_core(
+static inline void compress_core (
         uint32_t v[16], uint32_t cv[8], const uint8_t *block, const size_t blocklen,
         const uint64_t block_counter, const uint8_t flags)
 {
@@ -115,7 +115,20 @@ static inline void compress_core(
 
 }
 
-static inline void compress_xof(
+static inline void compress_in_place (
+            uint32_t cv[8], const uint8_t *block, const size_t blocklen,
+            const uint64_t block_counter, const uint8_t flags)
+{
+    uint32_t v[16];
+    size_t i;
+
+    compress_core(v, cv, block, blocklen, block_counter, flags);
+
+    for (i = 0; i < 8; ++i)
+        cv[i] = v[i] ^ v[i+8];
+}
+
+static inline void compress_xof (
             uint32_t cv[8], const uint8_t *block, const size_t blocklen, 
             const uint64_t block_counter, const uint8_t flags, uint8_t out[64])
 {
