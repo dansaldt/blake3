@@ -154,10 +154,30 @@ static inline void compress_xof (
     store32(&out[15 * 4], v[15] ^ cv[7]);
 }
 
+static inline uint8_t chunk_need_start_flag (struct nc_blake3_chunk_state *cs)
+{
+    if (cs->blocks_compressed == 0)
+        return NC_BLAKE3_CHUNK_START;
+    else
+        return 0;
+}
+
+static inline uint8_t chunk_need_end_flag (struct nc_blake3_chunk_state *cs) {
+    if (cs->blocks_compressed == 15)
+        return NC_BLAKE3_CHUNK_END;
+    else
+        return 0;
+}
+
+static inline void chunk_init_key (struct nc_blake3_chunk_state *cs, const uint32_t key[8])
+{
+    xmemcpy(cs->cv, key, NC_BLAKE3_KEY_BYTES);
+}
+
 static inline void chunk_init (
             struct nc_blake3_chunk_state *cs, const uint32_t key[8], const uint8_t flags)
 {
-    xmemcpy(cs->cv, key, NC_BLAKE3_KEY_BYTES);
+    chunk_init_key(cs, key);
     cs->counter = 0;
     xmemset(cs->buf, 0, NC_BLAKE3_BLOCK_BYTES);
     cs->buflen = 0;
@@ -165,11 +185,92 @@ static inline void chunk_init (
     cs->flags = flags;
 }
 
-static inline void chunk_update (
-            struct nc_blake3_chunk_state *cs, const uint8_t *in, const size_t len)
+static inline size_t chunk_update (
+            struct nc_blake3_state *s, const uint8_t *in, const size_t len)
 {
-    xmemcpy(cs->buf, in, len);
-    cs->buflen   = len;
+    size_t bytes_compressed, left;
+    bytes_compressed = left = 0;
+
+    // not enough to compress one block, put to buffer and return
+    if (s->chunk.buflen + len < NC_BLAKE3_BLOCK_BYTES) {
+        xmemcpy((&s->chunk.buf) + s->chunk.buflen, in, len);
+        s->chunk.buflen += len;
+        return bytes_compressed;
+    }
+
+    // calculate bytes to be compressed
+    do {
+        left += NC_BLAKE3_BLOCK_BYTES;
+    } while ( (left < len) && (left < NC_BLAKE3_CHUNK_BYTES) );
+
+    // compress one block with last buffer
+    if (s->chunk.buflen > 0) {
+        size_t x = NC_BLAKE3_BLOCK_BYTES - s->chunk.buflen;
+        xmemcpy(&s->chunk.buf[s->chunk.buflen], in, x);
+
+        uint8_t flags = s->chunk.flags
+                        | chunk_need_start_flag(&s->chunk)
+                        | chunk_need_end_flag(&s->chunk);
+
+        compress_in_place((uint32_t *)&s->chunk.cv, (const uint8_t *)&s->chunk.buf, NC_BLAKE3_BLOCK_BYTES,
+                          s->chunk.counter, flags);
+        s->chunk.blocks_compressed += 1;
+
+        in   += x;
+        left -= NC_BLAKE3_BLOCK_BYTES;
+    }
+
+    // compress blocks
+    while (left) {
+        xmemcpy(&s->chunk.buf, in, NC_BLAKE3_BLOCK_BYTES);
+        uint8_t flags = s->chunk.flags
+                        | chunk_need_start_flag(&s->chunk)
+                        | chunk_need_end_flag(&s->chunk);
+
+        compress_in_place((uint32_t *)&s->chunk.cv, (const uint8_t *)&s->chunk.buf, NC_BLAKE3_BLOCK_BYTES,
+                          s->chunk.counter, flags);
+        s->chunk.blocks_compressed += 1;
+
+        in   += NC_BLAKE3_BLOCK_BYTES;
+        left -= NC_BLAKE3_BLOCK_BYTES;
+    }
+
+    bytes_compressed = s->chunk.blocks_compressed * NC_BLAKE3_BLOCK_BYTES;
+
+    if (s->chunk.blocks_compressed == 16) {
+        s->chunk.counter += 1;
+        s->chunk.blocks_compressed = 0;
+    }
+
+    return bytes_compressed;
+}
+
+/**
+ * Updates the last chunk which was still in the buffer
+ */
+static inline size_t chunk_update_last (struct nc_blake3_state *s)
+{
+    size_t bytes_compressed = s->chunk.buflen;
+
+    if (s->chunk.blocks_compressed == 0) {
+        chunk_init_key(&s->chunk, s->key);
+    }
+
+    // set trailing buffer zero
+    if (s->chunk.buflen < NC_BLAKE3_BLOCK_BYTES) {
+        xmemset(&s->chunk.buf[s->chunk.buflen], 0, NC_BLAKE3_BLOCK_BYTES - s->chunk.buflen);
+    }
+
+    uint8_t flags = s->chunk.flags
+                    | chunk_need_start_flag(&s->chunk)
+                    | NC_BLAKE3_CHUNK_END;
+
+    compress_in_place((uint32_t *)&s->chunk.cv, (const uint8_t *)&s->chunk.buf, s->chunk.buflen,
+                      s->chunk.counter, flags);
+    s->chunk.blocks_compressed += 1;
+    s->chunk.buflen = 0;
+
+    return bytes_compressed;
 }
 
 static inline void chunk_root_output (struct nc_blake3_state *s, uint32_t out[8])
@@ -193,6 +294,14 @@ static inline void chunk_root_output (struct nc_blake3_state *s, uint32_t out[8]
     xmemcpy(out, buf64, s->digestlen);
 }
 
+static inline void cv_push (struct nc_blake3_state *s, uint32_t cv[8])
+{
+    uint8_t *pcv = (uint8_t *) cv;
+
+    memcpy(s->cv_stack + (s->cv_stacklen * 32), pcv, 32);
+    s->cv_stacklen += 1;
+}
+
 static inline void init_state (
             struct nc_blake3_state *s, const uint32_t key[8], const uint8_t flags)
 {
@@ -210,7 +319,7 @@ NC_BLAKE3_API int nc_blake3_init (struct nc_blake3_state *s, size_t digestlen)
     if ( !s || digestlen == 0 || digestlen > NC_BLAKE3_DIGEST_BYTES )
         return -1;
 
-    init_state(s, iv, NC_BLAKE3_CHUNK_START);
+    init_state(s, iv, 0);
     s->digestlen = digestlen;
 
     return 0; 
@@ -223,19 +332,18 @@ NC_BLAKE3_API int nc_blake3_update(struct nc_blake3_state *s, const void *in, co
         return -1;
 
     uint8_t *in_bytes = (uint8_t *) in;
-    size_t left = len;
+    size_t took, left = len;
 
-    while (left > NC_BLAKE3_CHUNK_BYTES) {
+    // TODO assuming only one chunk, change it to accept multiple chunks
+    took = chunk_update(s, in_bytes, left);
+    left -= took;
 
-        // TODO
-        chunk_update(&s->chunk, in, NC_BLAKE3_CHUNK_BYTES);
-
-        in_bytes += NC_BLAKE3_CHUNK_BYTES;
-        left     -= NC_BLAKE3_CHUNK_BYTES;
-    }
+    cv_push(s, s->chunk.cv);
 
     if (left > 0) {
-        chunk_update(&s->chunk, in, left);
+        in_bytes += took;
+        xmemcpy(&s->chunk.buf, in_bytes, left);
+        s->chunk.buflen = left;
     }
 
     return 0;
@@ -246,21 +354,12 @@ NC_BLAKE3_API int nc_blake3_final(struct nc_blake3_state *s)
     if ( !s )
         return -1;
 
-    size_t left = s->chunk.buflen;
-    //if ( left > 0 ) {  // TODO commented just for the test
-        s->chunk.flags |= NC_BLAKE3_CHUNK_END;
-        //xmemset((s->chunk.buf + left), 0, (NC_BLAKE3_CHUNK_BYTES - left));
+    if (s->chunk.buflen > 0) {
+        chunk_update_last(s);
+        cv_push(s, s->chunk.cv);
+    }
+
     chunk_root_output(s, (void *)&s->cv_stack);
-    //}
 
     return 0;
-}
-
-void test_print_iv (void)
-{
-    for (size_t i = 0; i < sizeof(iv)/sizeof(uint32_t); i++) {
-
-        printf("%08x\n", iv[i]);
-    }
-    
 }

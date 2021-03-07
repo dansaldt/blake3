@@ -57,7 +57,7 @@ struct nc_blake3_chunk_state
 {
     uint32_t cv[8];
     uint64_t counter;
-    uint8_t  buf[NC_BLAKE3_CHUNK_BYTES]; // TODO check if buf length need to be in chunk or block 
+    uint8_t  buf[NC_BLAKE3_BLOCK_BYTES];
     uint32_t buflen;
     uint8_t  blocks_compressed;
     uint8_t  flags;
@@ -80,7 +80,3 @@ NC_BLAKE3_API int nc_blake3_final(struct nc_blake3_state *s);
 
 /* simple API */
 NC_BLAKE3_API int nc_blake3();
-
-
-/* test functions */
-void test_print_iv (void);
